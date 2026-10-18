@@ -1,0 +1,1 @@
+/home/xunkal1/gradle-8.6/bin/gradle
