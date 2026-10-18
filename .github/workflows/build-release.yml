@@ -50,6 +50,7 @@ jobs:
       - name: Generate Gradle Wrapper
         run: |
           gradle wrapper --gradle-version 8.6 --distribution-type all
+          chmod +x gradlew
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
@@ -60,7 +61,6 @@ jobs:
       - name: Sign Release APK (debug keystore for automation)
         if: always()
         run: |
-          # Create a debug keystore for signing (automated builds)
           keytool -genkeypair \
             -alias androiddebugkey \
             -keypass android \
@@ -71,7 +71,6 @@ jobs:
             -keysize 2048 \
             -validity 10000
           
-          # Sign the release APK
           jarsigner -verbose \
             -sigalg SHA256withRSA \
             -digestalg SHA-256 \
@@ -81,7 +80,6 @@ jobs:
             app/build/outputs/apk/release/app-release-unsigned.apk \
             androiddebugkey
           
-          # Zipalign
           $ANDROID_HOME/build-tools/34.0.0/zipalign -v -p 4 \
             app/build/outputs/apk/release/app-release-unsigned.apk \
             app/build/outputs/apk/release/app-release-signed.apk
