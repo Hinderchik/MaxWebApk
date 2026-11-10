@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Max</string>
+    <string name="notifications_enabled">Push-уведомления</string>
+    <string name="calls_enabled">Звонки</string>
+    <string name="file_picker_title">Выберите файл</string>
+    <string name="camera_permission">Доступ к камере</string>
+    <string name="mic_permission">Доступ к микрофону</string>
+    <string name="storage_permission">Доступ к файлам</string>
+    <string name="incoming_call">Входящий звонок</string>
+    <string name="call_ended">Звонок завершён</string>
+    <string name="accept">Принять</string>
+    <string name="decline">Отклонить</string>
+    <string name="channel_messages">Сообщения</string>
+    <string name="channel_calls">Звонки</string>
+</resources>

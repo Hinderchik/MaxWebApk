@@ -1,0 +1,24 @@
+# Gradle
+.gradle/
+build/
+*/build/
+!*/src/main/**/build.gradle.kts
+
+# Local configuration
+local.properties
+*.iml
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# APK files (keep in backup/ but not in repo root)
+*.apk
+
+# Backup folder
+backup/

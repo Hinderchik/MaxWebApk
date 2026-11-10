@@ -1,0 +1,224 @@
+name: Build & Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: false
+        type: string
+      build_type:
+        description: 'Build type'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+
+# ============================================================
+# GitHub Secrets (Variables):
+#   FIREBASE_PROJECT_ID           chess-cc-messanger
+#   FIREBASE_API_KEY              AIzaSyAz2dkis9NgvZDFCq9CLqPbDL61Cp7XLAE
+#   FIREBASE_MESSAGING_SENDER_ID  681157216826
+#   FIREBASE_APP_ID               1:681157216826:web:6ec88f4ac9b02219850303
+#   FIREBASE_STORAGE_BUCKET       chess-cc-messanger.firebasestorage.app
+#   FIREBASE_AUTH_DOMAIN          chess-cc-messanger.firebaseapp.com
+#   FIREBASE_DATABASE_URL         https://chess-cc-messanger-default-rtdb.firebaseio.com
+#   FIREBASE_MEASUREMENT_ID       G-DK84QH1JYN
+# ============================================================
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+      FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+      FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+      FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+      FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+      FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+      FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;35.0.0'
+          cmdline-tools-version: 'latest'
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # ── Генерация google-services.json из секретен ──────────────────────
+      - name: Generate google-services.json
+        run: |
+          cat > app/google-services.json <<EOF
+          {
+            "project_info": {
+              "project_number": "${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}",
+              "project_id": "${FIREBASE_PROJECT_ID}",
+              "storage_bucket": "${FIREBASE_STORAGE_BUCKET}"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "${{ secrets.FIREBASE_APP_ID }}",
+                  "android_client_info": {
+                    "package_name": "com.maxweb.xunkal1"
+                  }
+                },
+                "oauth_client": [],
+                "api_key": [{"current_key": "${{ secrets.FIREBASE_API_KEY }}"}],
+                "services": {
+                  "appinvite_service": {"other_platform_oauth_client": []}
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+          echo "✅ google-services.json ready"
+
+      # ── Debug сборка ──────────────────────────────────────────────────────
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      # ── Release сборка ────────────────────────────────────────────────────
+      - name: Build Release APK
+        if: github.event.inputs.build_type == 'release' || startsWith(github.ref, 'refs/tags/')
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Sign Release APK (auto-debug-sign if no keystore)
+        if: github.event.inputs.build_type == 'release' || startsWith(github.ref, 'refs/tags/')
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          UNSIGNED="app/build/outputs/apk/release/app-release-unsigned.apk"
+          SIGNED="app/build/outputs/apk/release/app-release-signed.apk"
+
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "🔑 No release keystore → auto-signing with debug key"
+            keytool -genkeypair \
+              -alias androiddebugkey \
+              -keypass android -keystore debug.keystore \
+              -storepass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA -keysize 2048 -validity 10000
+
+            jarsigner -verbose \
+              -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore debug.keystore -storepass android -keypass android \
+              "$UNSIGNED" androiddebugkey
+
+            $ANDROID_HOME/build-tools/35.0.0/zipalign -v -p 4 \
+              "$UNSIGNED" "$SIGNED"
+          else
+            echo "🔐 Signing with release keystore..."
+            echo "$KEYSTORE_BASE64" | base64 -d > release.keystore
+            jarsigner -verbose \
+              -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore release.keystore \
+              -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+              "$UNSIGNED" "$KEY_ALIAS"
+            $ANDROID_HOME/build-tools/35.0.0/zipalign -v -p 4 \
+              "$UNSIGNED" "$SIGNED"
+          fi
+
+      - name: Upload Release APK
+        if: always() && (github.event.inputs.build_type == 'release' || startsWith(github.ref, 'refs/tags/'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/app-release-signed.apk
+          retention-days: 30
+
+      # ── GitHub Release ────────────────────────────────────────────────────
+      - name: Get version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            TAG="${{ github.event.inputs.version }}"
+          else
+            TAG="v$(date +%Y.%m.%d)"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: MaxWebApk ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            ${{ (startsWith(github.ref, 'refs/tags/') || github.event.inputs.build_type == 'release') && 'app/build/outputs/apk/release/app-release-signed.apk' || '' }}
+          body: |
+            ## 🚀 MaxWebApk ${{ steps.version.outputs.tag }}
+
+            Android-обёртка для мессенджера **MAX** (https://web.max.ru)
+
+            ### ✨ Фичи:
+            - Полноэкранный WebView с десктопным UA (Chrome 120)
+            - 🔥 **Push-уведомления** — Firebase Cloud Messaging
+            - 📞 **Звонки** — WebRTC, входящие звонки с уведомлением
+            - 📁 **Файлы** — отправка фото, видео, аудио, документов
+            - 🔒 Встроенный сертификат Минцифры (Russian Trusted Root CA)
+            - SSL доверие для *.max.ru / *.oneme.ru
+
+            ---
+            *Сборка через GitHub Actions*
+
+  notify:
+    name: Notify on failure
+    needs: build
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "❌ Build failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

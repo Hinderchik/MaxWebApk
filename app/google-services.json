@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "681157216826",
+    "project_id": "chess-cc-messanger",
+    "storage_bucket": "chess-cc-messanger.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:681157216826:android:a5a3e9f2c3b4d19850303",
+        "android_client_info": {
+          "package_name": "com.maxweb.xunkal1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAz2dkis9NgvZDFCq9CLqPbDL61Cp7XLAE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
