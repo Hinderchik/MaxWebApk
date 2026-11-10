@@ -22,3 +22,8 @@ Thumbs.db
 
 # Backup folder
 backup/
+
+# Firebase & env secrets
+.env
+.env.local
+google-services.json
